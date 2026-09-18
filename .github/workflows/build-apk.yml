@@ -38,28 +38,6 @@ jobs:
           is_kts = path.endswith(".kts")
           src = open(path, encoding="utf-8").read()
 
-          SIGN_KTS = """
-              signingConfigs {
-                  create("release") {
-                      storeFile = file("../../release-key.jks")
-                      storePassword = "moodtracker2026"
-                      keyAlias = "moodkey"
-                      keyPassword = "moodtracker2026"
-                  }
-              }
-          """
-
-          SIGN_GROOVY = """
-              signingConfigs {
-                  release {
-                      storeFile file("../../release-key.jks")
-                      storePassword "moodtracker2026"
-                      keyAlias "moodkey"
-                      keyPassword "moodtracker2026"
-                  }
-              }
-          """
-
           if is_kts:
               src = re.sub(r"minSdk\s*=\s*flutter\.minSdkVersion", "minSdk = 23", src)
               if "isCoreLibraryDesugaringEnabled" not in src:
@@ -67,10 +45,6 @@ jobs:
                       "compileOptions {\n        isCoreLibraryDesugaringEnabled = true", 1)
               if "desugar_jdk_libs" not in src:
                   src += '\n\ndependencies {\n    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")\n}\n'
-              if "signingConfigs" not in src:
-                  src = src.replace("    buildTypes {", SIGN_KTS + "\n    buildTypes {", 1)
-              src = src.replace('signingConfig = signingConfigs.getByName("debug")',
-                                'signingConfig = signingConfigs.getByName("release")')
           else:
               src = re.sub(r"minSdkVersion\s+flutter\.minSdkVersion", "minSdkVersion 23", src)
               src = re.sub(r"minSdk\s*=?\s*flutter\.minSdkVersion", "minSdk 23", src)
@@ -79,10 +53,6 @@ jobs:
                       "compileOptions {\n        coreLibraryDesugaringEnabled true", 1)
               if "desugar_jdk_libs" not in src:
                   src += "\n\ndependencies {\n    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.4'\n}\n"
-              if "signingConfigs" not in src:
-                  src = src.replace("    buildTypes {", SIGN_GROOVY + "\n    buildTypes {", 1)
-              src = src.replace("signingConfig signingConfigs.debug",
-                                "signingConfig signingConfigs.release")
 
           open(path, "w", encoding="utf-8").write(src)
           print("patched", path)
@@ -165,7 +135,24 @@ jobs:
       - name: Build release APK
         run: flutter build apk --release
 
+      - name: Sign APK with the stable release key
+        run: |
+          set -e
+          APK=build/app/outputs/flutter-apk/app-release.apk
+          BT=$(ls -d $ANDROID_HOME/build-tools/* | sort -V | tail -n 1)
+          echo "build-tools: $BT"
+          cp "$APK" unsigned.apk
+          zip -d unsigned.apk "META-INF/*.SF" "META-INF/*.RSA" "META-INF/*.DSA" || true
+          "$BT/zipalign" -p -f 4 unsigned.apk aligned.apk
+          "$BT/apksigner" sign \
+            --ks release-key.jks \
+            --ks-pass pass:moodtracker2026 \
+            --ks-key-alias moodkey \
+            --key-pass pass:moodtracker2026 \
+            --out kayf-halak.apk aligned.apk
+          "$BT/apksigner" verify --print-certs kayf-halak.apk
+
       - uses: actions/upload-artifact@v4
         with:
           name: mood-tracker-apk
-          path: build/app/outputs/flutter-apk/app-release.apk
+          path: kayf-halak.apk
