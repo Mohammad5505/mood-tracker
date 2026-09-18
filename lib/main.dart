@@ -229,7 +229,7 @@ class MoodApp extends StatelessWidget {
   Widget build(BuildContext context) {
     final seed = const Color(0xFF3F6B5A);
     return MaterialApp(
-      title: 'مزاجي',
+      title: 'كيف حالك',
       debugShowCheckedModeBanner: false,
       locale: const Locale('ar'),
       supportedLocales: const [Locale('ar'), Locale('en')],
@@ -285,7 +285,7 @@ class _HomePageState extends State<HomePage> {
     ];
     return Scaffold(
       appBar: AppBar(
-        title: const Text('مزاجي'),
+        title: const Text('كيف حالك'),
         centerTitle: true,
       ),
       body: pages[_tab],
