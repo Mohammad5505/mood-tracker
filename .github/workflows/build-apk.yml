@@ -38,6 +38,28 @@ jobs:
           is_kts = path.endswith(".kts")
           src = open(path, encoding="utf-8").read()
 
+          SIGN_KTS = """
+              signingConfigs {
+                  create("release") {
+                      storeFile = file("../../release-key.jks")
+                      storePassword = "moodtracker2026"
+                      keyAlias = "moodkey"
+                      keyPassword = "moodtracker2026"
+                  }
+              }
+          """
+
+          SIGN_GROOVY = """
+              signingConfigs {
+                  release {
+                      storeFile file("../../release-key.jks")
+                      storePassword "moodtracker2026"
+                      keyAlias "moodkey"
+                      keyPassword "moodtracker2026"
+                  }
+              }
+          """
+
           if is_kts:
               src = re.sub(r"minSdk\s*=\s*flutter\.minSdkVersion", "minSdk = 23", src)
               if "isCoreLibraryDesugaringEnabled" not in src:
@@ -45,6 +67,10 @@ jobs:
                       "compileOptions {\n        isCoreLibraryDesugaringEnabled = true", 1)
               if "desugar_jdk_libs" not in src:
                   src += '\n\ndependencies {\n    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")\n}\n'
+              if "signingConfigs" not in src:
+                  src = src.replace("    buildTypes {", SIGN_KTS + "\n    buildTypes {", 1)
+              src = src.replace('signingConfig = signingConfigs.getByName("debug")',
+                                'signingConfig = signingConfigs.getByName("release")')
           else:
               src = re.sub(r"minSdkVersion\s+flutter\.minSdkVersion", "minSdkVersion 23", src)
               src = re.sub(r"minSdk\s*=?\s*flutter\.minSdkVersion", "minSdk 23", src)
@@ -53,6 +79,10 @@ jobs:
                       "compileOptions {\n        coreLibraryDesugaringEnabled true", 1)
               if "desugar_jdk_libs" not in src:
                   src += "\n\ndependencies {\n    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.4'\n}\n"
+              if "signingConfigs" not in src:
+                  src = src.replace("    buildTypes {", SIGN_GROOVY + "\n    buildTypes {", 1)
+              src = src.replace("signingConfig signingConfigs.debug",
+                                "signingConfig signingConfigs.release")
 
           open(path, "w", encoding="utf-8").write(src)
           print("patched", path)
@@ -86,9 +116,47 @@ jobs:
               m = re.sub(r"(<manifest[^>]*>)", lambda x: x.group(1) + PERMS, m, count=1)
           if "ScheduledNotificationReceiver" not in m:
               m = m.replace("</application>", RECEIVERS + "    </application>", 1)
-          m = re.sub(r'android:label="[^"]*"', 'android:label="مزاجي"', m, count=1)
+          m = re.sub(r'android:label="[^"]*"', 'android:label="كيف حالك"', m, count=1)
           open(man, "w", encoding="utf-8").write(m)
           print("patched", man)
+          PY
+
+      - name: Build launcher icons
+        run: |
+          pip install --quiet pillow
+          python3 - <<'PY'
+          import os
+          from PIL import Image
+          RES = os.path.join("android", "app", "src", "main", "res")
+          base = Image.open("app_icon.png").convert("RGBA")
+          fore = Image.open("app_icon_foreground.png").convert("RGBA")
+
+          sizes = {"mdpi": 48, "hdpi": 72, "xhdpi": 96, "xxhdpi": 144, "xxxhdpi": 192}
+          for d, s in sizes.items():
+              folder = os.path.join(RES, "mipmap-" + d)
+              os.makedirs(folder, exist_ok=True)
+              base.resize((s, s), Image.LANCZOS).save(os.path.join(folder, "ic_launcher.png"))
+              fs = int(s * 108 / 48)
+              fore.resize((fs, fs), Image.LANCZOS).save(
+                  os.path.join(folder, "ic_launcher_foreground.png"))
+
+          any26 = os.path.join(RES, "mipmap-anydpi-v26")
+          os.makedirs(any26, exist_ok=True)
+          with open(os.path.join(any26, "ic_launcher.xml"), "w", encoding="utf-8") as f:
+              f.write('<?xml version="1.0" encoding="utf-8"?>\n')
+              f.write('<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">\n')
+              f.write('    <background android:drawable="@color/ic_launcher_background"/>\n')
+              f.write('    <foreground android:drawable="@mipmap/ic_launcher_foreground"/>\n')
+              f.write('</adaptive-icon>\n')
+
+          vals = os.path.join(RES, "values")
+          os.makedirs(vals, exist_ok=True)
+          with open(os.path.join(vals, "ic_launcher_background.xml"), "w", encoding="utf-8") as f:
+              f.write('<?xml version="1.0" encoding="utf-8"?>\n')
+              f.write('<resources>\n')
+              f.write('    <color name="ic_launcher_background">#000000</color>\n')
+              f.write('</resources>\n')
+          print("icons done")
           PY
 
       - name: Get packages
