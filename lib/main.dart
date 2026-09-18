@@ -189,14 +189,36 @@ Future<void> cancelDaily() => notifier.cancel(kDailyId);
 
 // ------------------------- التطبيق -------------------------
 
+// يُهيَّأ في الخلفية بعد إقلاع الواجهة
+Future<void>? _notifReady;
+
+Future<void> _initNotificationsSafely(Store store) async {
+  try {
+    await initNotifications().timeout(const Duration(seconds: 10));
+    if (store.enabled) {
+      await scheduleDaily(store.hour, store.minute)
+          .timeout(const Duration(seconds: 10));
+    }
+  } catch (_) {
+    // الإشعارات ليست شرطاً لتشغيل التطبيق
+  }
+}
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await initNotifications();
-  final store = await Store.open();
-  if (store.enabled) {
-    await scheduleDaily(store.hour, store.minute);
+
+  Store store;
+  try {
+    store = await Store.open().timeout(const Duration(seconds: 5));
+  } catch (_) {
+    final p = await SharedPreferences.getInstance();
+    store = Store(p);
   }
+
   runApp(MoodApp(store: store));
+
+  // لا ننتظرها: تشتغل بعد ظهور الواجهة
+  _notifReady = _initNotificationsSafely(store);
 }
 
 class MoodApp extends StatelessWidget {
@@ -243,7 +265,12 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => requestPermissions());
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      try {
+        await _notifReady;
+        await requestPermissions();
+      } catch (_) {}
+    });
   }
 
   void _refresh() => setState(() {});
@@ -836,6 +863,7 @@ class _SettingsTabState extends State<SettingsTab> {
           value: s.enabled,
           onChanged: (v) async {
             await s.setEnabled(v);
+            await _notifReady;
             if (v) {
               await requestPermissions();
               await scheduleDaily(s.hour, s.minute);
@@ -866,6 +894,7 @@ class _SettingsTabState extends State<SettingsTab> {
           subtitle: const Text('اضغط لو ما وصلك الإشعار'),
           trailing: const Icon(Icons.notifications_active_outlined),
           onTap: () async {
+            await _notifReady;
             await requestPermissions();
             if (s.enabled) await scheduleDaily(s.hour, s.minute);
             if (!mounted) return;
@@ -877,6 +906,7 @@ class _SettingsTabState extends State<SettingsTab> {
           title: const Text('تجربة إشعار الآن'),
           trailing: const Icon(Icons.play_arrow),
           onTap: () async {
+            await _notifReady;
             await notifier.show(
               999,
               'كيف كان يومك؟',
